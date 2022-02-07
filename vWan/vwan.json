@@ -1,0 +1,773 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "17178552866150120021"
+    }
+  },
+  "functions": [],
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "size": "Standard_B1ms",
+    "username": "demouser",
+    "password": "Azure12345678"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualWans",
+      "apiVersion": "2020-11-01",
+      "name": "my-vwan",
+      "location": "CentralUS",
+      "properties": {
+        "type": "Standard",
+        "allowBranchToBranchTraffic": true,
+        "allowVnetToVnetTraffic": true
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs",
+      "apiVersion": "2020-11-01",
+      "name": "CNUS-hub",
+      "location": "CentralUS",
+      "properties": {
+        "addressPrefix": "10.0.0.0/24",
+        "sku": "Standard",
+        "virtualWan": {
+          "id": "[resourceId('Microsoft.Network/virtualWans', 'my-vwan')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualWans', 'my-vwan')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/vpnGateways",
+      "apiVersion": "2020-11-01",
+      "name": "CNUS-vpn",
+      "location": "centralus",
+      "properties": {
+        "vpnGatewayScaleUnit": 1,
+        "virtualHub": {
+          "id": "[resourceId('Microsoft.Network/virtualHubs', 'CNUS-hub')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'CNUS-hub')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs",
+      "apiVersion": "2020-11-01",
+      "name": "wus-hub",
+      "location": "westus",
+      "properties": {
+        "addressPrefix": "10.1.0.0/24",
+        "sku": "Standard",
+        "virtualWan": {
+          "id": "[resourceId('Microsoft.Network/virtualWans', 'my-vwan')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualWans', 'my-vwan')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/vpnGateways",
+      "apiVersion": "2020-11-01",
+      "name": "wus-vpn",
+      "location": "westus",
+      "properties": {
+        "vpnGatewayScaleUnit": 1,
+        "virtualHub": {
+          "id": "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubRouteTables",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'wus-hub', 'AllToFirewallWUS')]",
+      "properties": {
+        "routes": [
+          {
+            "name": "AllToFirewallWUS",
+            "destinationType": "CIDR",
+            "destinations": [
+              "0.0.0.0/0"
+            ],
+            "nextHopType": "ResourceId",
+            "nextHop": "[resourceId('Microsoft.Network/azureFirewalls', 'fw-wus')]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', 'fw-wus')]",
+        "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubRouteTables",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'wus-hub', 'InternalToFirewallWus')]",
+      "properties": {
+        "routes": [
+          {
+            "name": "InternalToFirewallWus",
+            "destinationType": "CIDR",
+            "destinations": [
+              "10.0.0.0/8"
+            ],
+            "nextHopType": "ResourceId",
+            "nextHop": "[resourceId('Microsoft.Network/azureFirewalls', 'fw-wus')]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', 'fw-wus')]",
+        "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubRouteTables",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'CNUS-hub', 'AllToFirewallCNUS')]",
+      "properties": {
+        "routes": [
+          {
+            "name": "AllToFirewallCNUS",
+            "destinationType": "CIDR",
+            "destinations": [
+              "0.0.0.0/0"
+            ],
+            "nextHopType": "ResourceId",
+            "nextHop": "[resourceId('Microsoft.Network/azureFirewalls', 'fw-cnus')]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'CNUS-hub')]",
+        "[resourceId('Microsoft.Network/azureFirewalls', 'fw-cnus')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-11-01",
+      "name": "wus-jump-net",
+      "location": "westus",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.99.0/24"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "jump",
+            "properties": {
+              "addressPrefix": "10.0.99.0/25"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'wus-hub', 'wus-jump-connection')]",
+      "properties": {
+        "allowHubToRemoteVnetTransit": true,
+        "allowRemoteVnetToUseHubVnetGateways": true,
+        "enableInternetSecurity": true,
+        "remoteVirtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', 'wus-jump-net')]"
+        },
+        "routingConfiguration": {
+          "associatedRouteTable": {
+            "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'wus-hub', 'InternalToFirewallWus')]"
+          },
+          "propagatedRouteTables": {
+            "ids": [
+              {
+                "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'wus-hub', 'InternalToFirewallWus')]"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', 'wus-jump-net')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'wus-hub', 'InternalToFirewallWus')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-11-01",
+      "name": "wus-spoke1-net",
+      "location": "westus",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.1.0/24"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "sub1",
+            "properties": {
+              "addressPrefix": "10.0.1.0/25"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'wus-hub', 'wus-spoke1-connection')]",
+      "properties": {
+        "allowHubToRemoteVnetTransit": true,
+        "allowRemoteVnetToUseHubVnetGateways": true,
+        "enableInternetSecurity": true,
+        "remoteVirtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', 'wus-spoke1-net')]"
+        },
+        "routingConfiguration": {
+          "associatedRouteTable": {
+            "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'wus-hub', 'AllToFirewallWUS')]"
+          },
+          "propagatedRouteTables": {
+            "ids": [
+              {
+                "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'wus-hub', 'AllToFirewallWUS')]"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-jump-connection')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'wus-hub', 'AllToFirewallWUS')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', 'wus-spoke1-net')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-11-01",
+      "name": "wus-spoke2-net",
+      "location": "westus",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.2.0/24"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "sub1",
+            "properties": {
+              "addressPrefix": "10.0.2.0/25"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'wus-hub', 'wus-spoke2-connection')]",
+      "properties": {
+        "allowHubToRemoteVnetTransit": true,
+        "allowRemoteVnetToUseHubVnetGateways": true,
+        "enableInternetSecurity": true,
+        "remoteVirtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', 'wus-spoke2-net')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-jump-connection')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-spoke1-connection')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', 'wus-spoke2-net')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-11-01",
+      "name": "cnus-spoke1-net",
+      "location": "centralus",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.1.1.0/24"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "sub1",
+            "properties": {
+              "addressPrefix": "10.1.1.0/25"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'CNUS-hub', 'cnus-spoke1-connection')]",
+      "properties": {
+        "allowHubToRemoteVnetTransit": true,
+        "allowRemoteVnetToUseHubVnetGateways": true,
+        "enableInternetSecurity": true,
+        "remoteVirtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', 'cnus-spoke1-net')]"
+        },
+        "routingConfiguration": {
+          "associatedRouteTable": {
+            "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'CNUS-hub', 'AllToFirewallCNUS')]"
+          },
+          "propagatedRouteTables": {
+            "ids": [
+              {
+                "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'CNUS-hub', 'AllToFirewallCNUS')]"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'CNUS-hub')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'CNUS-hub', 'AllToFirewallCNUS')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', 'cnus-spoke1-net')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-jump-connection')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-spoke1-connection')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-spoke2-connection')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2020-11-01",
+      "name": "cnus-spoke2-net",
+      "location": "centralus",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.1.2.0/24"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "sub1",
+            "properties": {
+              "addressPrefix": "10.1.2.0/25"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'CNUS-hub', 'cnus-spoke2-connection')]",
+      "properties": {
+        "allowHubToRemoteVnetTransit": true,
+        "allowRemoteVnetToUseHubVnetGateways": true,
+        "enableInternetSecurity": true,
+        "remoteVirtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', 'cnus-spoke2-net')]"
+        },
+        "routingConfiguration": {
+          "associatedRouteTable": {
+            "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'CNUS-hub', 'AllToFirewallCNUS')]"
+          },
+          "propagatedRouteTables": {
+            "ids": [
+              {
+                "id": "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'CNUS-hub', 'AllToFirewallCNUS')]"
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'CNUS-hub')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubRouteTables', 'CNUS-hub', 'AllToFirewallCNUS')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'CNUS-hub', 'cnus-spoke1-connection')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', 'cnus-spoke2-net')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-jump-connection')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-spoke1-connection')]",
+        "[resourceId('Microsoft.Network/virtualHubs/hubVirtualNetworkConnections', 'wus-hub', 'wus-spoke2-connection')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies",
+      "apiVersion": "2020-11-01",
+      "name": "fw-policy",
+      "location": "westus",
+      "properties": {
+        "threatIntelMode": "Deny",
+        "sku": {
+          "tier": "Standard"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'fw-policy', 'DefaultApplicationRuleCollectionGroup')]",
+      "properties": {
+        "priority": 300,
+        "ruleCollections": [
+          {
+            "name": "allowMicrosoft",
+            "priority": 100,
+            "action": {
+              "type": "Allow"
+            },
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "rules": [
+              {
+                "ruleType": "ApplicationRule",
+                "name": "MicrosoftUpdate",
+                "protocols": [
+                  {
+                    "protocolType": "Http",
+                    "port": 80
+                  },
+                  {
+                    "protocolType": "Https",
+                    "port": 443
+                  }
+                ],
+                "sourceAddresses": [
+                  "*"
+                ],
+                "fqdnTags": [
+                  "WindowsUpdate"
+                ],
+                "terminateTLS": false
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', 'fw-policy')]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', 'fw-policy', 'DefaultNetworkRuleCollectionGroup')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', 'fw-policy', 'DefaultNetworkRuleCollectionGroup')]",
+      "properties": {
+        "priority": 200,
+        "ruleCollections": [
+          {
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "priority": 200,
+            "rules": [
+              {
+                "name": "allowIcmp",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "ICMP"
+                ],
+                "sourceAddresses": [
+                  "*"
+                ],
+                "destinationAddresses": [
+                  "*"
+                ],
+                "destinationPorts": [
+                  "*"
+                ]
+              },
+              {
+                "name": "allowSsh",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "TCP"
+                ],
+                "sourceAddresses": [
+                  "10.0.99.0/24"
+                ],
+                "destinationAddresses": [
+                  "10.0.0.0/8"
+                ],
+                "destinationPorts": [
+                  "22"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', 'fw-policy')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/azureFirewalls",
+      "apiVersion": "2020-11-01",
+      "name": "fw-wus",
+      "location": "westus",
+      "properties": {
+        "firewallPolicy": {
+          "id": "[resourceId('Microsoft.Network/firewallPolicies', 'fw-policy')]"
+        },
+        "sku": {
+          "name": "AZFW_Hub",
+          "tier": "Standard"
+        },
+        "hubIPAddresses": {
+          "publicIPs": {
+            "count": 1
+          }
+        },
+        "virtualHub": {
+          "id": "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', 'fw-policy')]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', 'fw-policy', 'DefaultApplicationRuleCollectionGroup')]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', 'fw-policy', 'DefaultNetworkRuleCollectionGroup')]",
+        "[resourceId('Microsoft.Network/virtualHubs', 'wus-hub')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/azureFirewalls",
+      "apiVersion": "2020-11-01",
+      "name": "fw-cnus",
+      "location": "centralus",
+      "properties": {
+        "firewallPolicy": {
+          "id": "[resourceId('Microsoft.Network/firewallPolicies', 'fw-policy')]"
+        },
+        "sku": {
+          "name": "AZFW_Hub",
+          "tier": "Standard"
+        },
+        "hubIPAddresses": {
+          "publicIPs": {
+            "count": 1
+          }
+        },
+        "virtualHub": {
+          "id": "[resourceId('Microsoft.Network/virtualHubs', 'CNUS-hub')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualHubs', 'CNUS-hub')]",
+        "[resourceId('Microsoft.Network/firewallPolicies', 'fw-policy')]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', 'fw-policy', 'DefaultApplicationRuleCollectionGroup')]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', 'fw-policy', 'DefaultNetworkRuleCollectionGroup')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2020-11-01",
+      "name": "jumpserver-ip",
+      "location": "westus",
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic"
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2020-11-01",
+      "name": "jumpserver-nic",
+      "location": "westus",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "10.0.99.4",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'jumpserver-ip')]"
+              },
+              "subnet": {
+                "id": "[format('{0}/subnets/jump', resourceId('Microsoft.Network/virtualNetworks', 'wus-jump-net'))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', 'jumpserver-ip')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', 'wus-jump-net')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2020-12-01",
+      "name": "jumpserver-vm",
+      "location": "westus",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('size')]"
+        },
+        "osProfile": {
+          "computerName": "jumpserver-vm",
+          "adminUsername": "[variables('username')]",
+          "adminPassword": "[variables('password')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "18.04-LTS",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', 'jumpserver-nic')]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', 'jumpserver-nic')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2020-11-01",
+      "name": "wus-spoke1-nic",
+      "location": "westus",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "10.0.1.4",
+              "subnet": {
+                "id": "[format('{0}/subnets/sub1', resourceId('Microsoft.Network/virtualNetworks', 'wus-spoke1-net'))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', 'wus-spoke1-net')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2020-12-01",
+      "name": "wus-spoke1-vm",
+      "location": "westus",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('size')]"
+        },
+        "osProfile": {
+          "computerName": "wus-spoke1-vm",
+          "adminUsername": "[variables('username')]",
+          "adminPassword": "[variables('password')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "18.04-LTS",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', 'wus-spoke1-nic')]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', 'wus-spoke1-nic')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2020-11-01",
+      "name": "cnus-spoke1-nic",
+      "location": "centralus",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "10.1.1.4",
+              "subnet": {
+                "id": "[format('{0}/subnets/sub1', resourceId('Microsoft.Network/virtualNetworks', 'cnus-spoke1-net'))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', 'cnus-spoke1-net')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2020-12-01",
+      "name": "cnus-spoke1-vm",
+      "location": "centralus",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('size')]"
+        },
+        "osProfile": {
+          "computerName": "cnus-spoke1-vm-vm",
+          "adminUsername": "[variables('username')]",
+          "adminPassword": "[variables('password')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "18.04-LTS",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', 'cnus-spoke1-nic')]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', 'cnus-spoke1-nic')]"
+      ]
+    }
+  ]
+}
