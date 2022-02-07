@@ -1,0 +1,3 @@
+bicep/inspectionCert/rootCA.*
+bicep/*.json
+vWan/*.json
